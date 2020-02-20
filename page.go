@@ -678,9 +678,9 @@ func (p Page) GetTextByRow() (Rows, error) {
 
 	p.walkTextBlocks(showText)
 
-	for _, row := range result {
-		bubbleSort(row.Content)
-	}
+	//for _, row := range result {
+	//	bubbleSort(row.Content)
+	//}
 
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Position > result[j].Position

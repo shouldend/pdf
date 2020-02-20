@@ -606,9 +606,9 @@ func (p Page) GetTextByColumn() (Columns, error) {
 
 	p.walkTextBlocks(showText)
 
-	for _, column := range result {
-		bubbleSort(column.Content)
-	}
+	//for _, column := range result {
+	//	bubbleSort(column.Content)
+	//}
 
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Position < result[j].Position

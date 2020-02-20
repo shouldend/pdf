@@ -607,7 +607,7 @@ func (p Page) GetTextByColumn() (Columns, error) {
 	p.walkTextBlocks(showText)
 
 	for _, column := range result {
-		sort.Sort(column.Content)
+		bubbleSort(column.Content)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -679,7 +679,7 @@ func (p Page) GetTextByRow() (Rows, error) {
 	p.walkTextBlocks(showText)
 
 	for _, row := range result {
-		sort.Sort(row.Content)
+		bubbleSort(row.Content)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -1020,4 +1020,14 @@ func buildOutline(entry Value) Outline {
 		x.Child = append(x.Child, buildOutline(child))
 	}
 	return x
+}
+
+func bubbleSort(slice sort.Interface) {
+	for i := 0; i < slice.Len(); i++ {
+		for j := 0; j < slice.Len()-i-1;j++ {
+			if !slice.Less(i, j) {
+				slice.Swap(i, j)
+			}
+		}
+	}
 }

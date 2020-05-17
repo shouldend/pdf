@@ -626,10 +626,7 @@ type Row struct {
 type Rows []*Row
 
 // GetTextByRow returns the page's all text grouped by rows
-func (p Page) GetTextByRow() (Rows, error) {
-	result := Rows{}
-	var err error
-
+func (p Page) GetTextByRow() (result Rows, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			result = Rows{}
@@ -654,25 +651,13 @@ func (p Page) GetTextByRow() (Rows, error) {
 			Y: currentY,
 		}
 
-		var currentRow *Row
-		rowFound := false
 		for _, row := range result {
 			if int64(currentY) == row.Position {
-				currentRow = row
-				rowFound = true
-				break
+				row.Content = append(row.Content, text)
+				return
 			}
 		}
-
-		if !rowFound {
-			currentRow = &Row{
-				Position: int64(currentY),
-				Content:  TextHorizontal{},
-			}
-			result = append(result, currentRow)
-		}
-
-		currentRow.Content = append(currentRow.Content, text)
+		result = append(result, &Row{Position: int64(currentY), Content: TextHorizontal{text}})
 	}
 
 	p.walkTextBlocks(showText)
@@ -699,7 +684,7 @@ func (p Page) walkTextBlocks(walker func(enc TextEncoding, x, y float64, s strin
 
 	var enc TextEncoding = &nopEncoder{}
 	var currentX, currentY float64
-	Interpret(strm, func(stk *Stack, op string) {
+	walkerFunc := func(stk *Stack, op string) {
 		n := stk.Len()
 		args := make([]Value, n)
 		for i := n - 1; i >= 0; i-- {
@@ -713,7 +698,8 @@ func (p Page) walkTextBlocks(walker func(enc TextEncoding, x, y float64, s strin
 		case "T*": // move to start of next line
 		case "Tf": // set text font and size
 			if len(args) != 2 {
-				panic("bad TL")
+				return
+				//panic("bad TL")
 			}
 
 			if font, ok := fonts[args[0].Name()]; ok {
@@ -723,21 +709,28 @@ func (p Page) walkTextBlocks(walker func(enc TextEncoding, x, y float64, s strin
 			}
 		case "\"": // set spacing, move to next line, and show text
 			if len(args) != 3 {
-				panic("bad \" operator")
+				return
+				//panic("bad \" operator")
 			}
 			fallthrough
 		case "'": // move to next line and show text
 			if len(args) != 1 {
-				panic("bad ' operator")
+				return
+				//panic("bad ' operator")
 			}
 			fallthrough
 		case "Tj": // show text
 			if len(args) != 1 {
-				panic("bad Tj operator")
+				return
+				//panic("bad Tj operator")
 			}
 
 			walker(enc, currentX, currentY, args[0].RawString())
 		case "TJ": // show text, allowing individual glyph positioning
+			if len(args) < 1 {
+				return
+				//panic("bad TJ operator")
+			}
 			v := args[0]
 			for i := 0; i < v.Len(); i++ {
 				x := v.Index(i)
@@ -751,7 +744,16 @@ func (p Page) walkTextBlocks(walker func(enc TextEncoding, x, y float64, s strin
 			currentX = args[4].Float64()
 			currentY = args[5].Float64()
 		}
-	})
+	}
+	switch v := strm.data.(type) {
+	case stream:
+		Interpret(strm, walkerFunc)
+	case array:
+		for idx := 0; idx < len(v); idx++ {
+			sub := strm.Index(idx)
+			Interpret(sub, walkerFunc)
+		}
+	}
 }
 
 // Content returns the page's content.
@@ -1023,7 +1025,7 @@ func buildOutline(entry Value) Outline {
 
 func bubbleSort(slice sort.Interface) {
 	for i := 0; i < slice.Len(); i++ {
-		for j := 0; j < slice.Len()-i-1;j++ {
+		for j := 0; j < slice.Len()-i-1; j++ {
 			if !slice.Less(i, j) {
 				slice.Swap(i, j)
 			}

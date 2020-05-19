@@ -1,4 +1,4 @@
-module pdf
+module github.com/shouldend/pdf
 
 go 1.12
 

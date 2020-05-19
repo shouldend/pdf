@@ -22,6 +22,7 @@ import (
 //	name, a PDF name without the leading slash
 //
 type token interface{}
+type rawString string
 
 // A name is a PDF name, without the leading slash.
 type name string
@@ -280,7 +281,7 @@ Loop:
 		}
 	}
 	b.tmp = tmp
-	return string(tmp)
+	return rawString(tmp)
 }
 
 func (b *buffer) readName() token {

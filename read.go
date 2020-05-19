@@ -480,7 +480,7 @@ func (v Value) Kind() ValueKind {
 		return Integer
 	case float64:
 		return Real
-	case string:
+	case rawString, string:
 		return String
 	case name:
 		return Name
@@ -770,7 +770,7 @@ func (r *Reader) resolve(parent objptr, x interface{}) Value {
 	switch x := x.(type) {
 	case nil, bool, int64, float64, name, dict, array, stream:
 		return Value{r, parent, x}
-	case string:
+	case rawString, string:
 		return Value{r, parent, x}
 	default:
 		panic(fmt.Errorf("unexpected value type %T in resolve", x))

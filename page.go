@@ -618,7 +618,7 @@ func (p Page) GetTextByColumn() (Columns, error) {
 
 // Row represents the contents of a row
 type Row struct {
-	Position int64
+	Position float64
 	Content  TextHorizontal
 }
 
@@ -652,12 +652,12 @@ func (p Page) GetTextByRow() (result Rows, err error) {
 		}
 
 		for _, row := range result {
-			if int64(currentY) == row.Position {
+			if currentY == row.Position {
 				row.Content = append(row.Content, text)
 				return
 			}
 		}
-		result = append(result, &Row{Position: int64(currentY), Content: TextHorizontal{text}})
+		result = append(result, &Row{Position: currentY, Content: TextHorizontal{text}})
 	}
 
 	p.walkTextBlocks(showText)
@@ -735,7 +735,12 @@ func (p Page) walkTextBlocks(walker func(enc TextEncoding, x, y float64, s strin
 			for i := 0; i < v.Len(); i++ {
 				x := v.Index(i)
 				if x.Kind() == String {
-					walker(enc, currentX, currentY, x.RawString())
+					switch sv := x.data.(type) {
+					case string:
+						walker(enc, currentX, currentY, sv)
+					case rawString:
+						walker(&nopEncoder{}, currentX, currentY, string(sv))
+					}
 				}
 			}
 		case "Td":

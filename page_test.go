@@ -7,23 +7,45 @@ import (
 	"fmt"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
+	"strconv"
 	"testing"
 )
 
 func TestTextHorizontal(t *testing.T) {
-	file, reader, e := Open(`F:\data\origin\222.pdf`)
+	file, reader, e := Open(`/Users/donge/Desktop/1207698967.PDF`)
 	assert.Equal(t, nil, e)
 	defer file.Close()
 	numPage := reader.NumPage()
+	var curSection string
+	var (
+		yMin float64 = 60
+		yMax float64 = 790
+	)
+
 	for i := 0; i < numPage; i++ {
 		page := reader.Page(i + 1)
-		rows, e := page.GetTextByRow()
-		assert.Equal(t, e, nil)
-		for _, row := range rows {
-			for _, content := range row.Content {
-				fmt.Printf("%s", content.S)
+		rows, _ := page.GetTextByRow()
+		for r, row := range rows {
+			if row.Position < yMin || row.Position > yMax {
+				continue
 			}
-			fmt.Println()
+			if r == len(rows) && row.Content.Len() == 1 {
+				_, err := strconv.Atoi(row.Content[0].S)
+				if err == nil {
+					// 如果是单纯的数字，那么直接跳过
+					continue
+				}
+			}
+			for j, text := range row.Content {
+				// 识别出区域
+				// 识别是否是页码
+				if text.S == " " && j == row.Content.Len()-1 {
+					fmt.Println(curSection)
+					curSection = ""
+				} else {
+					curSection = curSection + text.S
+				}
+			}
 		}
 	}
 }

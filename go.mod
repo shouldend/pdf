@@ -1,4 +1,4 @@
-module gopdf
+module pdf
 
 go 1.12
 

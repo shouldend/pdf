@@ -90,7 +90,6 @@ func (p Page) findInherited(key string) Value {
 	return Value{}
 }
 
-/*
 func (p Page) MediaBox() Value {
 	return p.findInherited("MediaBox")
 }
@@ -98,7 +97,6 @@ func (p Page) MediaBox() Value {
 func (p Page) CropBox() Value {
 	return p.findInherited("CropBox")
 }
-*/
 
 // Resources returns the resources dictionary associated with the page.
 func (p Page) Resources() Value {
@@ -796,184 +794,194 @@ func (p Page) Content() Content {
 		}
 	}
 
-	var rect []Rect
-	var gstack []gstate
-	Interpret(strm, func(stk *Stack, op string) {
-		n := stk.Len()
-		args := make([]Value, n)
-		for i := n - 1; i >= 0; i-- {
-			args[i] = stk.Pop()
-		}
-		switch op {
-		default:
-			//fmt.Println(op, args)
-			return
-
-		case "cm": // update g.CTM
-			if len(args) != 6 {
-				panic("bad g.Tm")
+	var (
+		rect            []Rect
+		gstack          []gstate
+		interpretDoFunc = func(stk *Stack, op string) {
+			n := stk.Len()
+			args := make([]Value, n)
+			for i := n - 1; i >= 0; i-- {
+				args[i] = stk.Pop()
 			}
-			var m matrix
-			for i := 0; i < 6; i++ {
-				m[i/2][i%2] = args[i].Float64()
-			}
-			m[2][2] = 1
-			g.CTM = m.mul(g.CTM)
+			switch op {
+			default:
+				//fmt.Println(op, args)
+				return
 
-		case "gs": // set parameters from graphics state resource
-			//gs := p.Resources().Key("ExtGState").Key(args[0].Name())
-			//font := gs.Key("Font")
-			//if font.Kind() == Array && font.Len() == 2 {
-			//fmt.Println("FONT", font)
-			//}
-
-		case "f": // fill
-		case "g": // setgray
-		case "l": // lineto
-		case "m": // moveto
-
-		case "cs": // set colorspace non-stroking
-		case "scn": // set color non-stroking
-
-		case "re": // append rectangle to path
-			if len(args) != 4 {
-				panic("bad re")
-			}
-			x, y, w, h := args[0].Float64(), args[1].Float64(), args[2].Float64(), args[3].Float64()
-			rect = append(rect, Rect{Point{x, y}, Point{x + w, y + h}})
-
-		case "q": // save graphics state
-			gstack = append(gstack, g)
-
-		case "Q": // restore graphics state
-			n := len(gstack) - 1
-			g = gstack[n]
-			gstack = gstack[:n]
-
-		case "BT": // begin text (reset text matrix and line matrix)
-			g.Tm = ident
-			g.Tlm = g.Tm
-
-		case "ET": // end text
-
-		case "T*": // move to start of next line
-			x := matrix{{1, 0, 0}, {0, 1, 0}, {0, -g.Tl, 1}}
-			g.Tlm = x.mul(g.Tlm)
-			g.Tm = g.Tlm
-
-		case "Tc": // set character spacing
-			if len(args) != 1 {
-				panic("bad g.Tc")
-			}
-			g.Tc = args[0].Float64()
-
-		case "TD": // move text position and set leading
-			if len(args) != 2 {
-				panic("bad Td")
-			}
-			g.Tl = -args[1].Float64()
-			fallthrough
-		case "Td": // move text position
-			if len(args) != 2 {
-				panic("bad Td")
-			}
-			tx := args[0].Float64()
-			ty := args[1].Float64()
-			x := matrix{{1, 0, 0}, {0, 1, 0}, {tx, ty, 1}}
-			g.Tlm = x.mul(g.Tlm)
-			g.Tm = g.Tlm
-
-		case "Tf": // set text font and size
-			if len(args) != 2 {
-				panic("bad TL")
-			}
-			f := args[0].Name()
-			g.Tf = p.Font(f)
-			enc = g.Tf.Encoder()
-			if enc == nil {
-				println("no cmap for", f)
-				enc = &nopEncoder{}
-			}
-			g.Tfs = args[1].Float64()
-
-		case "\"": // set spacing, move to next line, and show text
-			if len(args) != 3 {
-				panic("bad \" operator")
-			}
-			g.Tw = args[0].Float64()
-			g.Tc = args[1].Float64()
-			args = args[2:]
-			fallthrough
-		case "'": // move to next line and show text
-			if len(args) != 1 {
-				panic("bad ' operator")
-			}
-			x := matrix{{1, 0, 0}, {0, 1, 0}, {0, -g.Tl, 1}}
-			g.Tlm = x.mul(g.Tlm)
-			g.Tm = g.Tlm
-			fallthrough
-		case "Tj": // show text
-			if len(args) != 1 {
-				panic("bad Tj operator")
-			}
-			showText(args[0].RawString())
-
-		case "TJ": // show text, allowing individual glyph positioning
-			v := args[0]
-			for i := 0; i < v.Len(); i++ {
-				x := v.Index(i)
-				if x.Kind() == String {
-					showText(x.RawString())
-				} else {
-					tx := -x.Float64() / 1000 * g.Tfs * g.Th
-					g.Tm = matrix{{1, 0, 0}, {0, 1, 0}, {tx, 0, 1}}.mul(g.Tm)
+			case "cm": // update g.CTM
+				if len(args) != 6 {
+					panic("bad g.Tm")
 				}
-			}
-			showText("\n")
+				var m matrix
+				for i := 0; i < 6; i++ {
+					m[i/2][i%2] = args[i].Float64()
+				}
+				m[2][2] = 1
+				g.CTM = m.mul(g.CTM)
 
-		case "TL": // set text leading
-			if len(args) != 1 {
-				panic("bad TL")
-			}
-			g.Tl = args[0].Float64()
+			case "gs": // set parameters from graphics state resource
+				//gs := p.Resources().Key("ExtGState").Key(args[0].Name())
+				//font := gs.Key("Font")
+				//if font.Kind() == Array && font.Len() == 2 {
+				//fmt.Println("FONT", font)
+				//}
 
-		case "Tm": // set text matrix and line matrix
-			if len(args) != 6 {
-				panic("bad g.Tm")
-			}
-			var m matrix
-			for i := 0; i < 6; i++ {
-				m[i/2][i%2] = args[i].Float64()
-			}
-			m[2][2] = 1
-			g.Tm = m
-			g.Tlm = m
+			case "f": // fill
+			case "g": // setgray
+			case "l": // lineto
+			case "m": // moveto
 
-		case "Tr": // set text rendering mode
-			if len(args) != 1 {
-				panic("bad Tr")
-			}
-			g.Tmode = int(args[0].Int64())
+			case "cs": // set colorspace non-stroking
+			case "scn": // set color non-stroking
 
-		case "Ts": // set text rise
-			if len(args) != 1 {
-				panic("bad Ts")
-			}
-			g.Trise = args[0].Float64()
+			case "re": // append rectangle to path
+				if len(args) != 4 {
+					panic("bad re")
+				}
+				x, y, w, h := args[0].Float64(), args[1].Float64(), args[2].Float64(), args[3].Float64()
+				rect = append(rect, Rect{Point{x, y}, Point{x + w, y + h}})
 
-		case "Tw": // set word spacing
-			if len(args) != 1 {
-				panic("bad g.Tw")
-			}
-			g.Tw = args[0].Float64()
+			case "q": // save graphics state
+				gstack = append(gstack, g)
 
-		case "Tz": // set horizontal text scaling
-			if len(args) != 1 {
-				panic("bad Tz")
+			case "Q": // restore graphics state
+				n := len(gstack) - 1
+				g = gstack[n]
+				gstack = gstack[:n]
+
+			case "BT": // begin text (reset text matrix and line matrix)
+				g.Tm = ident
+				g.Tlm = g.Tm
+
+			case "ET": // end text
+
+			case "T*": // move to start of next line
+				x := matrix{{1, 0, 0}, {0, 1, 0}, {0, -g.Tl, 1}}
+				g.Tlm = x.mul(g.Tlm)
+				g.Tm = g.Tlm
+
+			case "Tc": // set character spacing
+				if len(args) != 1 {
+					panic("bad g.Tc")
+				}
+				g.Tc = args[0].Float64()
+
+			case "TD": // move text position and set leading
+				if len(args) != 2 {
+					panic("bad Td")
+				}
+				g.Tl = -args[1].Float64()
+				fallthrough
+			case "Td": // move text position
+				if len(args) != 2 {
+					panic("bad Td")
+				}
+				tx := args[0].Float64()
+				ty := args[1].Float64()
+				x := matrix{{1, 0, 0}, {0, 1, 0}, {tx, ty, 1}}
+				g.Tlm = x.mul(g.Tlm)
+				g.Tm = g.Tlm
+
+			case "Tf": // set text font and size
+				if len(args) != 2 {
+					panic("bad TL")
+				}
+				f := args[0].Name()
+				g.Tf = p.Font(f)
+				enc = g.Tf.Encoder()
+				if enc == nil {
+					println("no cmap for", f)
+					enc = &nopEncoder{}
+				}
+				g.Tfs = args[1].Float64()
+
+			case "\"": // set spacing, move to next line, and show text
+				if len(args) != 3 {
+					panic("bad \" operator")
+				}
+				g.Tw = args[0].Float64()
+				g.Tc = args[1].Float64()
+				args = args[2:]
+				fallthrough
+			case "'": // move to next line and show text
+				if len(args) != 1 {
+					panic("bad ' operator")
+				}
+				x := matrix{{1, 0, 0}, {0, 1, 0}, {0, -g.Tl, 1}}
+				g.Tlm = x.mul(g.Tlm)
+				g.Tm = g.Tlm
+				fallthrough
+			case "Tj": // show text
+				if len(args) != 1 {
+					panic("bad Tj operator")
+				}
+				showText(args[0].RawString())
+
+			case "TJ": // show text, allowing individual glyph positioning
+				v := args[0]
+				for i := 0; i < v.Len(); i++ {
+					x := v.Index(i)
+					if x.Kind() == String {
+						showText(x.RawString())
+					} else {
+						tx := -x.Float64() / 1000 * g.Tfs * g.Th
+						g.Tm = matrix{{1, 0, 0}, {0, 1, 0}, {tx, 0, 1}}.mul(g.Tm)
+					}
+				}
+				showText("\n")
+
+			case "TL": // set text leading
+				if len(args) != 1 {
+					panic("bad TL")
+				}
+				g.Tl = args[0].Float64()
+
+			case "Tm": // set text matrix and line matrix
+				if len(args) != 6 {
+					panic("bad g.Tm")
+				}
+				var m matrix
+				for i := 0; i < 6; i++ {
+					m[i/2][i%2] = args[i].Float64()
+				}
+				m[2][2] = 1
+				g.Tm = m
+				g.Tlm = m
+
+			case "Tr": // set text rendering mode
+				if len(args) != 1 {
+					panic("bad Tr")
+				}
+				g.Tmode = int(args[0].Int64())
+
+			case "Ts": // set text rise
+				if len(args) != 1 {
+					panic("bad Ts")
+				}
+				g.Trise = args[0].Float64()
+
+			case "Tw": // set word spacing
+				if len(args) != 1 {
+					panic("bad g.Tw")
+				}
+				g.Tw = args[0].Float64()
+
+			case "Tz": // set horizontal text scaling
+				if len(args) != 1 {
+					panic("bad Tz")
+				}
+				g.Th = args[0].Float64() / 100
 			}
-			g.Th = args[0].Float64() / 100
 		}
-	})
+	)
+	switch strm.Kind() {
+	case Array:
+		for i := 0; i < strm.Len(); i++ {
+			Interpret(strm.Index(i), interpretDoFunc)
+		}
+	case Stream:
+		Interpret(strm, interpretDoFunc)
+	}
 	return Content{text, rect}
 }
 

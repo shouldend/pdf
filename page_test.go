@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/bmizerany/assert"
 	"io/ioutil"
+	"math"
+	"sort"
 	"strconv"
 	"testing"
 )
@@ -58,4 +60,211 @@ func TestZLib(t *testing.T) {
 	}
 	cb, _ := ioutil.ReadAll(reader)
 	t.Log("\n" + string(cb) + "\n")
+}
+
+type IntPoint struct {
+	X, Y int64
+}
+type IntRect struct {
+	Min, Max IntPoint
+}
+
+type RectSlice []IntRect
+
+func newIntRect(rect Rect) IntRect {
+	return IntRect{
+		IntPoint{int64(math.Round(rect.Min.X)), 1000 - int64(math.Round(rect.Max.Y))},
+		IntPoint{int64(math.Round(rect.Max.X)), 1000 - int64(math.Round(rect.Min.Y))},
+	}
+}
+
+func (r RectSlice) Len() int {
+	return len(r)
+}
+
+func (r RectSlice) Less(i, j int) bool {
+	if r[i].Min.Y < r[j].Min.Y {
+		return true
+	}
+	if r[i].Min.Y > r[j].Min.Y {
+		return false
+	}
+	if r[i].Min.X < r[j].Min.X {
+		return true
+	}
+	if r[i].Min.X > r[j].Min.X {
+		return false
+	}
+	if r[i].Max.Y < r[j].Max.Y {
+		return true
+	}
+	if r[i].Max.Y > r[j].Max.Y {
+		return false
+	}
+	if r[i].Max.X < r[j].Max.X {
+		return true
+	}
+	if r[i].Max.X > r[j].Max.X {
+		return false
+	}
+	return false
+}
+
+func (r RectSlice) Swap(i, j int) {
+	r[i], r[j] = r[j], r[i]
+}
+
+func TestSplit(t *testing.T) {
+	file, reader, _ := Open(`F:\data\origin\222.pdf`)
+	defer file.Close()
+	page := reader.Page(12)
+	box := page.MediaBox()
+	var (
+		bounds   [4]int64
+		useBound = false
+	)
+	if !box.IsNull() {
+		for i := 0; i < 4; i++ {
+			bounds[i] = int64(math.Round(box.Index(i).Float64() * 10))
+		}
+		useBound = true
+	}
+	texts := page.Content().Text
+	var slice RectSlice
+	for _, rect := range page.Content().Rect {
+		slice = append(slice, newIntRect(rect))
+	}
+	sort.Sort(slice)
+	last := IntRect{}
+	var current = RectSlice{}
+	for _, rect := range slice {
+		if rect == last {
+			continue
+		}
+		// 跳过media之外的
+		if useBound && (rect.Min.Y < bounds[1] || rect.Max.Y > bounds[3]) {
+			continue
+		}
+		// 跳过线宽的
+		if isEqual(rect.Max.X, rect.Min.X) || isEqual(rect.Max.Y, rect.Min.Y) {
+			continue
+		}
+		if rect.Min.Y-last.Max.Y >= 2 {
+			// new rect
+			if current.Len() > 0 {
+				dealRect(texts, current)
+			}
+			current = RectSlice{}
+		}
+		current = append(current, rect)
+		last = rect
+	}
+	if current.Len() > 0 {
+		dealRect(texts, current)
+	}
+}
+
+func dealRect(texts []Text, rs RectSlice) {
+	// 收集所有的x，y
+	var xl, yl []int64
+	for _, rect := range rs {
+		insertSlice(&xl, rect.Min.X)
+		insertSlice(&xl, rect.Max.X)
+		insertSlice(&yl, rect.Min.Y)
+		insertSlice(&yl, rect.Max.Y)
+	}
+	var result = `<table border="2" bordercolor="black" width="300" cellspacing="0" cellpadding="5">` + "\n"
+	rows := getRows(rs)
+	for yMinPos, rowRects := range rows {
+		var curResult = "<tr>\n"
+		for _, rowRect := range rowRects {
+			// 判断colspan
+			var (
+				colspan, rowspan int
+				xMinPos, xMaxPos int
+				yMaxPos          = yMinPos + 1
+			)
+
+			for ! isEqual(yl[yMaxPos], rowRect.Max.Y) {
+				yMaxPos++
+			}
+			colspan = yMinPos - yMinPos
+			for i, x := range xl {
+				if isEqual(x, rowRect.Min.X) {
+					xMinPos = i
+				}
+				if isEqual(x, rowRect.Max.X) {
+					xMaxPos = i
+					break
+				}
+			}
+			rowspan = xMaxPos - xMinPos
+			curResult += `<td`
+			if rowspan > 1 {
+				curResult += fmt.Sprintf(` rowspan="%d"`, rowspan)
+			}
+			if colspan > 1 {
+				curResult += fmt.Sprintf(` colspan="%d"`, rowspan)
+			}
+			curResult += `>`
+			// 选择内容
+			for _, text := range texts {
+				if inRect(text, rowRect) {
+					curResult += text.S
+				}
+			}
+			curResult += "</td>\n"
+		}
+		curResult += "</tr>\n"
+		result += curResult
+	}
+	result += "</table>\n<br /><br />"
+	fmt.Print(result)
+}
+
+func getRows(slice RectSlice) (result []RectSlice) {
+	var (
+		last    = IntRect{}
+		current = RectSlice{}
+	)
+	for _, rect := range slice {
+		if last.Min.Y != rect.Min.Y {
+			if current.Len() > 0 {
+				result = append(result, current)
+			}
+			current = RectSlice{}
+		}
+		current = append(current, rect)
+		last = rect
+	}
+	if current.Len() > 0 {
+		result = append(result, current)
+	}
+	return
+}
+
+func insertSlice(slice *[]int64, value int64) {
+	for i, v := range *slice {
+		if v == value {
+			return
+		}
+		if v > value {
+			ns := (*slice)[:i]
+			ns = append(ns, value)
+			ns = append(ns, (*slice)[i:]...)
+			*slice = ns
+			return
+		}
+	}
+	*slice = append(*slice, value)
+}
+
+func inRect(text Text, rect IntRect) bool {
+	x := int64(math.Round(text.X))
+	y := 1000 - int64(math.Round(text.Y))
+	return x >= rect.Min.X && x <= rect.Max.X && y >= rect.Min.Y && y <= rect.Max.Y
+}
+
+func isEqual(x, y int64) bool {
+	return x-y <= 2 && x-y >= -2
 }

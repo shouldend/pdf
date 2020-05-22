@@ -862,19 +862,22 @@ func (p Page) Content() Content {
 
 			case "Tc": // set character spacing
 				if len(args) != 1 {
-					panic("bad g.Tc")
+					return
+					//panic("bad g.Tc")
 				}
 				g.Tc = args[0].Float64()
 
 			case "TD": // move text position and set leading
 				if len(args) != 2 {
-					panic("bad Td")
+					return
+					//panic("bad Td")
 				}
 				g.Tl = -args[1].Float64()
 				fallthrough
 			case "Td": // move text position
 				if len(args) != 2 {
-					panic("bad Td")
+					return
+					//panic("bad Td")
 				}
 				tx := args[0].Float64()
 				ty := args[1].Float64()
@@ -884,7 +887,8 @@ func (p Page) Content() Content {
 
 			case "Tf": // set text font and size
 				if len(args) != 2 {
-					panic("bad TL")
+					return
+					//panic("bad TL")
 				}
 				f := args[0].Name()
 				g.Tf = p.Font(f)
@@ -913,7 +917,8 @@ func (p Page) Content() Content {
 				fallthrough
 			case "Tj": // show text
 				if len(args) != 1 {
-					panic("bad Tj operator")
+					return
+					//panic("bad Tj operator")
 				}
 				showText(args[0].RawString())
 
@@ -932,7 +937,8 @@ func (p Page) Content() Content {
 
 			case "TL": // set text leading
 				if len(args) != 1 {
-					panic("bad TL")
+					return
+					//panic("bad TL")
 				}
 				g.Tl = args[0].Float64()
 
@@ -950,7 +956,8 @@ func (p Page) Content() Content {
 
 			case "Tr": // set text rendering mode
 				if len(args) != 1 {
-					panic("bad Tr")
+					return
+					//panic("bad Tr")
 				}
 				g.Tmode = int(args[0].Int64())
 

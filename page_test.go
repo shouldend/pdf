@@ -10,6 +10,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -115,9 +116,9 @@ func (r RectSlice) Swap(i, j int) {
 }
 
 func TestSplit(t *testing.T) {
-	file, reader, _ := Open(`F:\data\origin\222.pdf`)
+	file, reader, _ := Open(`/Users/donge/Desktop/1207698967.PDF`)
 	defer file.Close()
-	page := reader.Page(12)
+	page := reader.Page(10)
 	box := page.MediaBox()
 	var (
 		bounds   [4]int64
@@ -125,7 +126,7 @@ func TestSplit(t *testing.T) {
 	)
 	if !box.IsNull() {
 		for i := 0; i < 4; i++ {
-			bounds[i] = int64(math.Round(box.Index(i).Float64() * 10))
+			bounds[i] = int64(math.Round(box.Index(i).Float64()))
 		}
 		useBound = true
 	}
@@ -173,22 +174,28 @@ func dealRect(texts []Text, rs RectSlice) {
 		insertSlice(&yl, rect.Min.Y)
 		insertSlice(&yl, rect.Max.Y)
 	}
-	var result = `<table border="2" bordercolor="black" width="300" cellspacing="0" cellpadding="5">` + "\n"
+	var result = `<table border="2" bordercolor="black" width="90%" cellspacing="0" cellpadding="5">` + "\n"
 	rows := getRows(rs)
-	for yMinPos, rowRects := range rows {
+	for _, rowRects := range rows {
 		var curResult = "<tr>\n"
 		for _, rowRect := range rowRects {
 			// 判断colspan
 			var (
-				colspan, rowspan int
+				rowspan, colspan int
 				xMinPos, xMaxPos int
-				yMaxPos          = yMinPos + 1
+				yMinPos,yMaxPos  int
 			)
 
-			for ! isEqual(yl[yMaxPos], rowRect.Max.Y) {
-				yMaxPos++
+			for i, y := range yl {
+				if isEqual(y, rowRect.Min.Y) {
+					yMinPos = i
+				}
+				if isEqual(y, rowRect.Max.Y) {
+					yMaxPos = i
+					break
+				}
 			}
-			colspan = yMinPos - yMinPos
+			rowspan = yMaxPos - yMinPos
 			for i, x := range xl {
 				if isEqual(x, rowRect.Min.X) {
 					xMinPos = i
@@ -198,19 +205,19 @@ func dealRect(texts []Text, rs RectSlice) {
 					break
 				}
 			}
-			rowspan = xMaxPos - xMinPos
+			colspan = xMaxPos - xMinPos
 			curResult += `<td`
+			if colspan > 1 {
+				curResult += fmt.Sprintf(` colspan="%d"`, colspan)
+			}
 			if rowspan > 1 {
 				curResult += fmt.Sprintf(` rowspan="%d"`, rowspan)
-			}
-			if colspan > 1 {
-				curResult += fmt.Sprintf(` colspan="%d"`, rowspan)
 			}
 			curResult += `>`
 			// 选择内容
 			for _, text := range texts {
 				if inRect(text, rowRect) {
-					curResult += text.S
+					curResult += strings.TrimSpace(text.S)
 				}
 			}
 			curResult += "</td>\n"
@@ -218,8 +225,8 @@ func dealRect(texts []Text, rs RectSlice) {
 		curResult += "</tr>\n"
 		result += curResult
 	}
-	result += "</table>\n<br /><br />"
-	fmt.Print(result)
+	result += "</table>\n"
+	fmt.Println(result)
 }
 
 func getRows(slice RectSlice) (result []RectSlice) {
@@ -245,11 +252,12 @@ func getRows(slice RectSlice) (result []RectSlice) {
 
 func insertSlice(slice *[]int64, value int64) {
 	for i, v := range *slice {
-		if v == value {
+		if isEqual(v, value) {
 			return
 		}
 		if v > value {
-			ns := (*slice)[:i]
+			var ns []int64
+			ns = append(ns, (*slice)[:i]...)
 			ns = append(ns, value)
 			ns = append(ns, (*slice)[i:]...)
 			*slice = ns

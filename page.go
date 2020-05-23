@@ -432,6 +432,14 @@ type Text struct {
 	S        string  // the actual UTF-8 text
 }
 
+type Image struct {
+	X, Y             float64
+	Width, Height    int64
+	BitsPerComponent int64
+	Filter           string
+	Content          []byte
+}
+
 // A Rect represents a rectangle.
 type Rect struct {
 	Min, Max Point
@@ -770,7 +778,7 @@ func (p Page) Content() Content {
 	}
 
 	var text []Text
-	showText := func(s string) {
+	showText := func(enc TextEncoding, s string) {
 		n := 0
 		decoded := enc.Decode(s)
 		for _, ch := range decoded {
@@ -920,20 +928,26 @@ func (p Page) Content() Content {
 					return
 					//panic("bad Tj operator")
 				}
-				showText(args[0].RawString())
+				showText(enc, args[0].RawString())
 
 			case "TJ": // show text, allowing individual glyph positioning
 				v := args[0]
 				for i := 0; i < v.Len(); i++ {
 					x := v.Index(i)
 					if x.Kind() == String {
-						showText(x.RawString())
+						switch sv := x.data.(type) {
+						case string:
+							showText(enc, sv)
+						case rawString:
+							showText(&nopEncoder{}, string(sv))
+						}
+
 					} else {
 						tx := -x.Float64() / 1000 * g.Tfs * g.Th
 						g.Tm = matrix{{1, 0, 0}, {0, 1, 0}, {tx, 0, 1}}.mul(g.Tm)
 					}
 				}
-				showText("\n")
+				showText(&nopEncoder{}, "\n")
 
 			case "TL": // set text leading
 				if len(args) != 1 {

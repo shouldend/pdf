@@ -810,20 +810,32 @@ func (v Value) Reader() io.ReadCloser {
 	case Null:
 		// ok
 	case Name:
-		rd = applyFilter(rd, filter.Name(), param)
+		rd = applyFilter(rd, filter.Name(), param, x.hdr)
 	case Array:
 		for i := 0; i < filter.Len(); i++ {
-			rd = applyFilter(rd, filter.Index(i).Name(), param.Index(i))
+			rd = applyFilter(rd, filter.Index(i).Name(), param.Index(i), x.hdr)
 		}
 	}
 
 	return ioutil.NopCloser(rd)
 }
 
-func applyFilter(rd io.Reader, name string, param Value) io.Reader {
-	switch name {
+func applyFilter(rd io.Reader, filterName string, param Value, hdr dict) io.Reader {
+	switch filterName {
 	default:
-		panic("unknown filter " + name)
+		panic("unknown filter " + filterName)
+	case "DCTDecode":
+		var (
+			colorSpace = "DeviceGray"
+			bits       = 8
+		)
+		if v, exists := hdr["BitsPerComponent"]; exists {
+			bits = int(v.(int64))
+		}
+		if v, exists := hdr["ColorSpace"]; exists {
+			colorSpace = string(v.(name))
+		}
+		return newDCTDecoder(rd, colorSpace, bits)
 	case "FlateDecode":
 		zr, err := zlib.NewReader(rd)
 		if err != nil {

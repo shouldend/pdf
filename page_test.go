@@ -6,8 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/bmizerany/assert"
+	"github.com/llgcode/draw2d/draw2dimg"
+	"image"
+	"image/color"
+	"image/png"
 	"io/ioutil"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -115,10 +120,52 @@ func (r RectSlice) Swap(i, j int) {
 	r[i], r[j] = r[j], r[i]
 }
 
-func TestSplit(t *testing.T) {
-	file, reader, _ := Open(`/Users/donge/Desktop/1207698967.PDF`)
+func TestImage(t *testing.T) {
+	file, reader, _ := Open(`F:\data\origin\34ac99b37e3059ffb564b2da204a55d6.pdf`)
 	defer file.Close()
 	page := reader.Page(10)
+	value := page.Resources().Key("XObject")
+	dicts := value.data.(dict)
+	for k, v := range dicts {
+		if strings.HasPrefix(string(k), "Image") {
+			result := reader.resolve(page.V.ptr, v)
+			reader := result.Reader()
+			b, e := ioutil.ReadAll(reader)
+			if e != nil {
+				panic(e)
+			}
+			s, ok := result.data.(stream)
+			if !ok {
+				continue
+			}
+			h, w := int(s.hdr["Height"].(int64)), int(s.hdr["Width"].(int64))
+			var softMask []byte = nil
+			img := image.NewRGBA(image.Rect(0, 0, w, h))
+			i := 0
+			for y := 0; y < h; y++ {
+				for x := 0; x < w; x++ {
+					alpha := uint8(255)
+					if softMask != nil {
+						alpha = softMask[y*w+x]
+					}
+					img.Set(x, y, color.NRGBA{R: b[i], G: b[i+1], B: b[i+2], A: alpha})
+					i += 3
+				}
+			}
+			file, _ := os.Create("10.png")
+			if e = png.Encode(file, img); e != nil {
+				fmt.Println(e)
+			}
+			file.Close()
+			reader.Close()
+		}
+	}
+}
+
+func TestSplit(t *testing.T) {
+	file, reader, _ := Open(`F:\data\origin\34ac99b37e3059ffb564b2da204a55d6.pdf`)
+	defer file.Close()
+	page := reader.Page(11)
 	box := page.MediaBox()
 	var (
 		bounds   [4]int64
@@ -135,6 +182,7 @@ func TestSplit(t *testing.T) {
 	for _, rect := range page.Content().Rect {
 		slice = append(slice, newIntRect(rect))
 	}
+	drawRect([]RectSlice{slice})
 	sort.Sort(slice)
 	last := IntRect{}
 	var current = RectSlice{}
@@ -183,7 +231,7 @@ func dealRect(texts []Text, rs RectSlice) {
 			var (
 				rowspan, colspan int
 				xMinPos, xMaxPos int
-				yMinPos,yMaxPos  int
+				yMinPos, yMaxPos int
 			)
 
 			for i, y := range yl {
@@ -235,11 +283,18 @@ func getRows(slice RectSlice) (result []RectSlice) {
 		current = RectSlice{}
 	)
 	for _, rect := range slice {
-		if last.Min.Y != rect.Min.Y {
+		if !isEqual(last.Min.Y, rect.Min.Y) {
 			if current.Len() > 0 {
 				result = append(result, current)
 			}
 			current = RectSlice{}
+		}
+		if isEqual(last.Min.X, rect.Min.X) {
+			if current.Len() > 0 && last.Max.X > rect.Max.X {
+				current = current[:current.Len()-1]
+			} else {
+				continue
+			}
 		}
 		current = append(current, rect)
 		last = rect
@@ -275,4 +330,24 @@ func inRect(text Text, rect IntRect) bool {
 
 func isEqual(x, y int64) bool {
 	return x-y <= 2 && x-y >= -2
+}
+
+func drawRect(rows []RectSlice) {
+	img := image.NewRGBA(image.Rect(0, 0, 1000, 1000))
+	gc := draw2dimg.NewGraphicContext(img)
+	gc.SetStrokeColor(color.RGBA{0x44, 0x44, 0x44, 0xff})
+	gc.SetLineWidth(1)
+	for _, row := range rows {
+		for _, rect := range row {
+			minX, minY, maxX, maxY := float64(rect.Min.X), float64(rect.Min.Y), float64(rect.Max.X), float64(rect.Max.Y)
+			gc.MoveTo(minX, minY)
+			gc.LineTo(minX, maxY)
+			gc.LineTo(maxX, maxY)
+			gc.LineTo(maxX, minY)
+			gc.LineTo(minX, minY)
+			gc.FillStroke()
+		}
+	}
+	gc.Close()
+	draw2dimg.SaveToPngFile("rect.png", img)
 }

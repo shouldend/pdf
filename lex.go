@@ -303,7 +303,8 @@ func (b *buffer) readName() token {
 		tmp = append(tmp, c)
 	}
 	b.tmp = tmp
-	return name(string(tmp))
+	s := string(tmp)
+	return name(s)
 }
 
 func (b *buffer) readKeyword() token {

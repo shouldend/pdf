@@ -20,7 +20,7 @@ import (
 )
 
 func TestTextHorizontal(t *testing.T) {
-	file, reader, e := Open(`/Users/donge/Desktop/1207698967.PDF`)
+	file, reader, e := Open(`../1207698967.PDF`)
 	assert.Equal(t, nil, e)
 	defer file.Close()
 	numPage := reader.NumPage()
@@ -95,16 +95,16 @@ func (r RectSlice) Less(i, j int) bool {
 	if r[i].Min.Y > r[j].Min.Y {
 		return false
 	}
-	if r[i].Min.X < r[j].Min.X {
-		return true
-	}
-	if r[i].Min.X > r[j].Min.X {
-		return false
-	}
 	if r[i].Max.Y < r[j].Max.Y {
 		return true
 	}
 	if r[i].Max.Y > r[j].Max.Y {
+		return false
+	}
+	if r[i].Min.X < r[j].Min.X {
+		return true
+	}
+	if r[i].Min.X > r[j].Min.X {
 		return false
 	}
 	if r[i].Max.X < r[j].Max.X {
@@ -121,7 +121,7 @@ func (r RectSlice) Swap(i, j int) {
 }
 
 func TestImage(t *testing.T) {
-	file, reader, _ := Open(`F:\data\origin\34ac99b37e3059ffb564b2da204a55d6.pdf`)
+	file, reader, _ := Open(`../34ac99b37e3059ffb564b2da204a55d6.pdf`)
 	defer file.Close()
 	page := reader.Page(10)
 	value := page.Resources().Key("XObject")
@@ -163,7 +163,7 @@ func TestImage(t *testing.T) {
 }
 
 func TestSplit(t *testing.T) {
-	file, reader, _ := Open(`F:\data\origin\34ac99b37e3059ffb564b2da204a55d6.pdf`)
+	file, reader, _ := Open(`../34ac99b37e3059ffb564b2da204a55d6.pdf`)
 	defer file.Close()
 	page := reader.Page(11)
 	box := page.MediaBox()
@@ -182,8 +182,8 @@ func TestSplit(t *testing.T) {
 	for _, rect := range page.Content().Rect {
 		slice = append(slice, newIntRect(rect))
 	}
-	drawRect([]RectSlice{slice})
 	sort.Sort(slice)
+	drawRect([]RectSlice{slice})
 	last := IntRect{}
 	var current = RectSlice{}
 	for _, rect := range slice {
@@ -209,6 +209,7 @@ func TestSplit(t *testing.T) {
 		last = rect
 	}
 	if current.Len() > 0 {
+		drawRect([]RectSlice{current})
 		dealRect(texts, current)
 	}
 }
@@ -222,8 +223,81 @@ func dealRect(texts []Text, rs RectSlice) {
 		insertSlice(&yl, rect.Min.Y)
 		insertSlice(&yl, rect.Max.Y)
 	}
+	//rows := getRows(rs)
+	//result := rows2Table(rows, xl, yl, texts)
+	matrix := getMatrix(rs, xl, yl)
+	for _, rects := range matrix {
+		for _, rect := range rects {
+			if rect == nil {
+				fmt.Printf(" X ")
+			} else {
+				fmt.Printf(" O ")
+			}
+		}
+		fmt.Println(len(rects))
+	}
+	result := matrix2Table(matrix, xl, yl, texts)
+	fmt.Println(result)
+}
+
+func matrix2Table(matrix [][]*IntRect, xl, yl []int64, texts []Text) string {
 	var result = `<table border="2" bordercolor="black" width="90%" cellspacing="0" cellpadding="5">` + "\n"
-	rows := getRows(rs)
+	trueRows, trueCols := len(matrix), len(matrix[0])
+	for row := 0; row < trueRows; row++ {
+		var (
+			curResult = "<tr>\n"
+			isNeed    = false
+		)
+		for col := 0; col < trueCols; col++ {
+			if matrix[row][col] == nil {
+				continue
+			}
+			isNeed = true
+			var nextRow int
+			for nextRow = row + 1; nextRow < trueRows; nextRow++ {
+				if matrix[nextRow][col] != nil {
+					break
+				}
+			}
+			var xMinPos, xMaxPos int
+			rowRect := matrix[row][col]
+			for i, x := range xl {
+				if isEqual(x, rowRect.Min.X) {
+					xMinPos = i
+				}
+				if isEqual(x, rowRect.Max.X) {
+					xMaxPos = i
+					break
+				}
+			}
+			colspan := xMaxPos - xMinPos
+			curResult += `<td`
+			if colspan > 1 {
+				curResult += fmt.Sprintf(` colspan="%d"`, colspan)
+			}
+			if nextRow-row > 1 {
+				curResult += fmt.Sprintf(` rowspan="%d"`, nextRow-row)
+			}
+			curResult += `>`
+			// 选择内容
+			for _, text := range texts {
+				if inRect(text, *matrix[row][col]) {
+					curResult += strings.TrimSpace(text.S)
+				}
+			}
+			curResult += "</td>\n"
+		}
+		if isNeed {
+			curResult += "</tr>\n"
+			result += curResult
+		}
+	}
+	result += "</table>\n"
+	return result
+}
+
+func rows2Table(rows []RectSlice, xl, yl []int64, texts []Text) string {
+	var result = `<table border="2" bordercolor="black" width="90%" cellspacing="0" cellpadding="5">` + "\n"
 	for _, rowRects := range rows {
 		var curResult = "<tr>\n"
 		for _, rowRect := range rowRects {
@@ -274,7 +348,7 @@ func dealRect(texts []Text, rs RectSlice) {
 		result += curResult
 	}
 	result += "</table>\n"
-	fmt.Println(result)
+	return result
 }
 
 func getRows(slice RectSlice) (result []RectSlice) {
@@ -305,6 +379,69 @@ func getRows(slice RectSlice) (result []RectSlice) {
 	return
 }
 
+func getMatrix(slice RectSlice, xl, yl []int64) [][]*IntRect {
+	sx, sy := len(xl), len(yl)
+	result := make([][]*IntRect, sy-1, sy-1)
+	for i := 0; i < sy-1; i++ {
+		result[i] = make([]*IntRect, sx-1, sx-1)
+	}
+	for _, rect := range slice {
+		var row, col int
+		for row = 0; row < sy-1; row++ {
+			if isEqual(rect.Min.Y, yl[row]) {
+				break
+			}
+		}
+		for col = 0; col < sx-1; col++ {
+			if isEqual(rect.Min.X, xl[col]) {
+				break
+			}
+		}
+		// 填入
+		if result[row][col] == nil {
+			r := rect
+			result[row][col] = &r
+		} else {
+			old := result[row][col]
+			if old.Max.Y > rect.Max.Y || (isEqual(old.Max.Y, rect.Max.Y) && old.Max.X > rect.Max.X) {
+				r := rect
+				result[row][col] = &r
+			}
+		}
+	}
+	// 细化到最小单元
+	for row := 0; row < len(result)-1; row++ {
+		for col := 0; col < len(result[row])-1; col++ {
+			if result[row][col] != nil {
+				for i := col + 1; i < len(result[row]); i++ {
+					if result[row][i] != nil && result[row][col].Max.X > result[row][i].Max.X {
+						result[row][col] = nil
+						break
+					}
+				}
+			}
+			if result[row][col] != nil {
+				for i := row + 1; i < len(result); i++ {
+					if result[i][col] != nil && result[row][col].Max.Y > result[i][col].Max.Y {
+						result[row][col] = nil
+						break
+					}
+				}
+			}
+		}
+	}
+	return result
+}
+
+func inSlice(slice []int, value int) bool {
+	for _, v := range slice {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+
 func insertSlice(slice *[]int64, value int64) {
 	for i, v := range *slice {
 		if isEqual(v, value) {
@@ -323,14 +460,16 @@ func insertSlice(slice *[]int64, value int64) {
 }
 
 func inRect(text Text, rect IntRect) bool {
-	x := int64(math.Round(text.X))
-	y := 1000 - int64(math.Round(text.Y))
+	x := int64(math.Ceil(text.X))
+	y := 1000 - int64(math.Ceil(text.Y))
 	return x >= rect.Min.X && x <= rect.Max.X && y >= rect.Min.Y && y <= rect.Max.Y
 }
 
 func isEqual(x, y int64) bool {
 	return x-y <= 2 && x-y >= -2
 }
+
+var idx = 0
 
 func drawRect(rows []RectSlice) {
 	img := image.NewRGBA(image.Rect(0, 0, 1000, 1000))
@@ -349,5 +488,6 @@ func drawRect(rows []RectSlice) {
 		}
 	}
 	gc.Close()
-	draw2dimg.SaveToPngFile("rect.png", img)
+	draw2dimg.SaveToPngFile(fmt.Sprintf("rect_%d.png", idx), img)
+	idx += 1
 }

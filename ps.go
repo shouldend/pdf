@@ -79,7 +79,7 @@ Reading:
 						}
 					}
 				}
-			case "EDC":
+			case "EMC":
 				ignore = false
 			}
 		}

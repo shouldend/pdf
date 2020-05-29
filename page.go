@@ -8,7 +8,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
+	"io/ioutil"
 	"sort"
 	"strings"
 )
@@ -433,11 +437,28 @@ type Text struct {
 }
 
 type Image struct {
-	X, Y             float64
 	Width, Height    int64
 	BitsPerComponent int64
-	Filter           string
 	Content          []byte
+	SoftMask         []byte
+	ColorSpace       string
+}
+
+func (m Image) WritePng(writer io.Writer) error {
+	var w, h = int(m.Width), int(m.Height)
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	i := 0
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			alpha := uint8(255)
+			if m.SoftMask != nil {
+				alpha = m.SoftMask[y*w+x]
+			}
+			img.Set(x, y, color.NRGBA{R: m.Content[i], G: m.Content[i+1], B: m.Content[i+2], A: alpha})
+			i += 3
+		}
+	}
+	return png.Encode(writer, img)
 }
 
 // A Rect represents a rectangle.
@@ -1004,6 +1025,40 @@ func (p Page) Content() Content {
 		Interpret(strm, interpretDoFunc)
 	}
 	return Content{text, rect}
+}
+
+func (p Page) Images() []Image {
+	value := p.Resources().Key("XObject")
+	dicts := value.data.(dict)
+	var images []Image
+	for k, v := range dicts {
+		if strings.HasPrefix(string(k), "Image") {
+			result := p.V.r.resolve(p.V.ptr, v)
+			reader := result.Reader()
+			b, e := ioutil.ReadAll(reader)
+			if e != nil {
+				panic(e)
+			}
+			s, ok := result.data.(stream)
+			if !ok {
+				continue
+			}
+			image := Image{
+				Height:   s.hdr["Height"].(int64),
+				Width:    s.hdr["Width"].(int64),
+				Content:  b,
+				SoftMask: []byte{},
+			}
+			if sMask, exists := s.hdr["SMask"]; exists {
+				image.SoftMask, e = ioutil.ReadAll(p.V.r.resolve(p.V.ptr, sMask).Reader())
+				if e != nil {
+					panic(e)
+				}
+			}
+			images = append(images, image)
+		}
+	}
+	return images
 }
 
 // TextVertical implements sort.Interface for sorting

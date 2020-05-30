@@ -1010,6 +1010,9 @@ func (p Page) Content() Content {
 				showText(enc, args[0].RawString())
 
 			case "TJ": // show text, allowing individual glyph positioning
+				if len(args) != 1 {
+					return
+				}
 				v := args[0]
 				for i := 0; i < v.Len(); i++ {
 					x := v.Index(i)

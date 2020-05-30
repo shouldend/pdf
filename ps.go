@@ -59,9 +59,30 @@ func Interpret(strm Value, do func(stk *Stack, op string)) {
 	b.allowStream = false
 	var stk Stack
 	var dicts []dict
+	var ignore = false
 Reading:
 	for {
 		tok := b.readToken()
+		if kw, ok := tok.(keyword); ok {
+			switch kw {
+			default:
+				if ignore {
+					stk.stack = []Value{}
+					continue
+				}
+			case "BDC":
+				for _, value := range stk.stack {
+					if d, ok := value.data.(dict); ok {
+						if _, exists := d["Attached"]; exists {
+							// 直接ignore
+							ignore = true
+						}
+					}
+				}
+			case "EMC":
+				ignore = false
+			}
+		}
 		if tok == io.EOF {
 			break
 		}

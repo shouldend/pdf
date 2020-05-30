@@ -102,16 +102,18 @@ func TestImage(t *testing.T) {
 		return
 	}
 	defer file.Close()
-	page := reader.Page(64)
-	for i, img := range page.Images() {
-		file, err := os.Create(fmt.Sprintf("64_%d.png", i))
-		if err != nil {
-			t.Fatal(err)
+	for i := 0; i < reader.NumPage(); i++ {
+		page := reader.Page(i + 1)
+		for j, img := range page.Images() {
+			file, err := os.Create(fmt.Sprintf("%d_%d.png", i, j))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = img.WritePng(file); err != nil {
+				t.Fatal(err)
+			}
+			file.Close()
 		}
-		if err = img.WritePng(file); err != nil {
-			t.Fatal(err)
-		}
-		file.Close()
 	}
 }
 

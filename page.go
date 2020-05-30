@@ -13,6 +13,7 @@ import (
 	"image/png"
 	"io"
 	"io/ioutil"
+	"math/bits"
 	"sort"
 	"strings"
 )
@@ -437,28 +438,85 @@ type Text struct {
 }
 
 type Image struct {
-	Width, Height    int64
-	BitsPerComponent int64
+	Width, Height    int
+	BitsPerComponent int
 	Content          []byte
 	SoftMask         []byte
 	ColorSpace       string
+	Indexed          []uint8
 }
 
 func (m Image) WritePng(writer io.Writer) error {
-	var w, h = int(m.Width), int(m.Height)
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	i := 0
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			alpha := uint8(255)
-			if m.SoftMask != nil {
-				alpha = m.SoftMask[y*w+x]
+	var w, h = m.Width, m.Height
+	rect := image.Rect(0, 0, w, h)
+	trueContents := bits2Uint(m.Content, m.BitsPerComponent)
+	switch m.ColorSpace {
+	default:
+		return fmt.Errorf("not supported color space")
+	case "DeviceRGB":
+		img := image.NewRGBA(rect)
+		i := 0
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				alpha := uint8(255)
+				if len(m.SoftMask) > 0 {
+					alpha = m.SoftMask[y*w+x]
+				}
+				if len(m.Indexed) == 0 {
+					img.Set(x, y, color.NRGBA{
+						R: trueContents[i],
+						G: trueContents[i+1],
+						B: trueContents[i+2],
+						A: alpha,
+					})
+				} else {
+					img.Set(x, y, color.NRGBA{
+						R: m.Indexed[trueContents[y*w+x]*3],
+						G: m.Indexed[trueContents[y*w+x]*3+1],
+						B: m.Indexed[trueContents[y*w+x]*3+2],
+						A: alpha,
+					})
+				}
+				i += 3
 			}
-			img.Set(x, y, color.NRGBA{R: m.Content[i], G: m.Content[i+1], B: m.Content[i+2], A: alpha})
-			i += 3
+		}
+		return png.Encode(writer, img)
+	case "DeviceGray":
+		img := image.NewGray(rect)
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				if m.Indexed == nil {
+					img.Set(x, y, color.Gray{Y: trueContents[y*w+x]})
+				} else {
+					img.Set(x, y, color.Gray{Y: m.Indexed[trueContents[y*w+x]]})
+				}
+			}
+		}
+		return png.Encode(writer, img)
+	}
+}
+
+func bits2Uint(src []byte, bitSize int) (dst []uint8) {
+	var (
+		bs        = 0
+		cur uint8 = 0
+	)
+	for _, b := range src {
+		for i := 0; i < 8; i++ {
+			cur <<= 1
+			if bits.LeadingZeros8(b) == 0 {
+				cur |= 1
+			}
+			b <<= 1
+			bs++
+			if bs == bitSize {
+				dst = append(dst, cur)
+				cur = 0
+				bs = 0
+			}
 		}
 	}
-	return png.Encode(writer, img)
+	return dst
 }
 
 // A Rect represents a rectangle.
@@ -1043,19 +1101,30 @@ func (p Page) Images() []Image {
 			if !ok {
 				continue
 			}
-			image := Image{
-				Height:   s.hdr["Height"].(int64),
-				Width:    s.hdr["Width"].(int64),
-				Content:  b,
-				SoftMask: []byte{},
+			img := Image{
+				Height:           int(s.hdr["Height"].(int64)),
+				Width:            int(s.hdr["Width"].(int64)),
+				BitsPerComponent: int(s.hdr["BitsPerComponent"].(int64)),
+				Content:          b,
+				SoftMask:         []byte{},
+			}
+			colorSpace := s.hdr["ColorSpace"]
+			switch v := colorSpace.(type) {
+			case name:
+				img.ColorSpace = string(v)
+			case array:
+				if n, ok := v[0].(name); ok && string(n) == "Indexed" {
+					img.ColorSpace = string(v[1].(name))
+					img.Indexed = []byte(v[3].(string))
+				}
 			}
 			if sMask, exists := s.hdr["SMask"]; exists {
-				image.SoftMask, e = ioutil.ReadAll(p.V.r.resolve(p.V.ptr, sMask).Reader())
+				img.SoftMask, e = ioutil.ReadAll(p.V.r.resolve(p.V.ptr, sMask).Reader())
 				if e != nil {
 					panic(e)
 				}
 			}
-			images = append(images, image)
+			images = append(images, img)
 		}
 	}
 	return images

@@ -1091,6 +1091,9 @@ func (p Page) Content() Content {
 
 func (p Page) Images() []Image {
 	value := p.Resources().Key("XObject")
+	if value.IsNull() {
+		return []Image{}
+	}
 	dicts := value.data.(dict)
 	var images []Image
 	for k, v := range dicts {

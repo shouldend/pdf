@@ -932,10 +932,11 @@ func (p Page) Content() Content {
 				gstack = append(gstack, g)
 
 			case "Q": // restore graphics state
-				n := len(gstack) - 1
-				g = gstack[n]
-				gstack = gstack[:n]
-
+				if len(gstack) > 0 {
+					n := len(gstack) - 1
+					g = gstack[n]
+					gstack = gstack[:n]
+				}
 			case "BT": // begin text (reset text matrix and line matrix)
 				g.Tm = ident
 				g.Tlm = g.Tm

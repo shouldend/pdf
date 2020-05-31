@@ -459,7 +459,7 @@ func (m Image) WritePng(writer io.Writer) error {
 		for y := 0; y < h; y++ {
 			for x := 0; x < w; x++ {
 				alpha := uint8(255)
-				if len(m.SoftMask) > 0 {
+				if len(m.SoftMask) >= w*h {
 					alpha = m.SoftMask[y*w+x]
 				}
 				if len(m.Indexed) == 0 {

@@ -1119,7 +1119,14 @@ func (p Page) Images() []Image {
 			case array:
 				if n, ok := v[0].(name); ok && string(n) == "Indexed" {
 					img.ColorSpace = string(v[1].(name))
-					img.Indexed = []byte(v[3].(string))
+					switch tv := v[3].(type) {
+					case string:
+						img.Indexed = []byte(tv)
+					case objptr:
+						sr := p.V.r.resolve(p.V.ptr, tv)
+						img.Indexed, _ = ioutil.ReadAll(sr.Reader())
+
+					}
 				}
 			}
 			if sMask, exists := s.hdr["SMask"]; exists {

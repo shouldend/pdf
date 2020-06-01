@@ -156,6 +156,11 @@ Reading:
 			case "pop":
 				stk.Pop()
 				continue
+			case "dup":
+				value := stk.Pop()
+				stk.Push(value)
+				stk.Push(value)
+				continue
 			}
 		}
 		b.unreadToken(tok)

@@ -5,8 +5,10 @@
 package pdf
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
 // A Stack represents a stack of values.
@@ -52,8 +54,26 @@ func newDict() Value {
 // There is no support for executable blocks, among other limitations.
 //
 func Interpret(strm Value, do func(stk *Stack, op string)) {
-	rd := strm.Reader()
-	b := newBuffer(rd, 0)
+	var b *buffer
+	switch strm.Kind() {
+	default:
+		panic("not support kind for Interpret")
+	case Stream:
+		rd := strm.Reader()
+		b = newBuffer(rd, 0)
+	case Array:
+		var data []byte
+		for i := 0; i < strm.Len(); i++ {
+			reader := strm.Index(i).Reader()
+			tmp, e := ioutil.ReadAll(reader)
+			if e != nil {
+				panic(e)
+			}
+			data = append(data, tmp...)
+			reader.Close()
+		}
+		b = newBuffer(ioutil.NopCloser(bytes.NewReader(data)), 0)
+	}
 	b.allowEOF = true
 	b.allowObjptr = false
 	b.allowStream = false

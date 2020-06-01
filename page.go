@@ -1078,14 +1078,7 @@ func (p Page) Content() Content {
 			}
 		}
 	)
-	switch strm.Kind() {
-	case Array:
-		for i := 0; i < strm.Len(); i++ {
-			Interpret(strm.Index(i), interpretDoFunc)
-		}
-	case Stream:
-		Interpret(strm, interpretDoFunc)
-	}
+	Interpret(strm, interpretDoFunc)
 	return Content{text, rect}
 }
 
